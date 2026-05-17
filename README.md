@@ -1,7 +1,7 @@
 # Geometry-Aware Phase Compensation for Sampling-Efficient Angular Spectrum Method
 
 Official demo for **Geometry-Aware Phase Compensation (GPC)** and **Local Phase Correction (LPC)** techniques designed for sampling-efficient Angular Spectrum Method (ASM) propagation in thick optical systems.
-
+https://doi.org/10.1364/OE.586512
 ##  Overview
 
 This repository demonstrates a computationally efficient methodology for simulating light propagation through thick refractive elements (e.g., lenslets, micro-optics) at high incident angles. 
