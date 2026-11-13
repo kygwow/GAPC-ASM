@@ -21,6 +21,30 @@ Traditional single-step ASM often suffers from numerical instability and phase e
 - **Quantitative Metrics**: Integrated MS-SSIM and Centroid (µm) calculation for quantitative fidelity verification.
 
 
+##  Lens Orientation Convention
+
+The heightmap is the material thickness measured from the flat base of the lens.
+
+- `heightmapDirection='front'`: the curved surface faces the incident light (curved first). Multi-slice propagation starts at the apex slice.
+- `heightmapDirection='back'`: the flat base faces the incident light (flat first). Multi-slice propagation starts at the base slice.
+
+**Convention change (2026-11-13).** Earlier versions of this code assigned the labels the other way round: `'front'` sliced from the base (flat first) and `'back'` from the apex (curved first), although this README already described `'front'` as curved first. The engines now follow the README. To reproduce results produced with the earlier code, swap `'front'` and `'back'`. The results figure was regenerated with the corrected labels; its rows therefore swap places compared with the earlier figure.
+
+##  Validated Regime and Known Limitations
+
+- **Single-slice accuracy depends on surface curvature.** On the demo lens (ROC 2 mm, thickness 100 µm), SS-AS+LPC tracks the multi-slice reference closely (20° centroid within about 0.4 µm, focus within the depth of focus). On a strongly curved microlens (ROC about 305 µm, sag 22.5 µm), the curved-first single slice differs from multi-slice by 13–32% in near-focus intensity on a small detector. Use the multi-slice engine for strongly curved surfaces.
+- `get_grids` builds the spatial grid with `linspace(-L/2, L/2, N)`, a spacing of L/(N-1), while the frequency grid assumes a spacing of `PxSize`.
+- The ASM kernel has no band limit.
+- GPC uses a single global plane-wave angle for the whole aperture.
+
+##  Testing
+
+```bash
+python -m pytest tests/
+```
+
+The test checks that the orientation fix is a pure relabel of the earlier code (read from git history) and that `'front'` starts at the apex slice.
+
 ##  Requirements
 
 The simulation is built using **PyTorch** for GPU acceleration and automatic differentiation compatibility.
