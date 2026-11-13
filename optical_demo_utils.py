@@ -42,6 +42,22 @@ def get_asm_kernel(FX, FY, wavelength, dz, n, x_rad=0.0, y_rad=0.0):
     
     return mask * torch.exp(1j * kz * dz)
 
+def is_curved_first(heightmapDirection):
+    """
+    Map the lens orientation label to the physical surface order.
+
+    'front': the curved surface faces the incident light (curved first).
+    'back' : the flat base faces the incident light (flat first).
+
+    The heightmap is the material thickness measured from the flat base, so
+    'front' starts at the apex slice and 'back' starts at the base slice.
+    Before 2026-11-13 the code used the opposite assignment (see README).
+    """
+    direction = str(heightmapDirection).lower()
+    if direction not in ('front', 'back'):
+        raise ValueError(f"heightmapDirection must be 'front' or 'back', got {heightmapDirection!r}")
+    return direction == 'front'
+
 def hard_stable_bounded_clip(x, lower, upper):
     """Hard clipping for slicing stability."""
     max_val = (upper - lower)
@@ -58,7 +74,8 @@ def heightmap_slicer(heightmap, dz_mask, slice_idx, heightmapDirection='front', 
     numSlices = int(torch.ceil(torch.as_tensor(axial_thickness / dz_mask)).item())
     dz_last = axial_thickness - (numSlices - 1) * dz_mask
 
-    idx = slice_idx if heightmapDirection.lower() in ['front'] else numSlices - 1 - slice_idx
+    # Curved first: start at the apex (top) slice; flat first: start at the base slice.
+    idx = numSlices - 1 - slice_idx if is_curved_first(heightmapDirection) else slice_idx
 
     z_start = idx * dz_mask
     z_actual = dz_mask if idx < numSlices - 1 else dz_last
@@ -104,10 +121,10 @@ def local_phase_correction(XX, YY, heightmap, skewXRad_array, skewYRad_array, pi
 
     hm = heightmap.to(device)
     heightmap_batch = hm.view(1, 1, H, W).expand(B, C, H, W)
-    if heightmapDirection.lower() in ['front']:
-        skewX, skewY = -skewXRad_array, -skewYRad_array
-    else:
+    if is_curved_first(heightmapDirection):
         skewX, skewY = skewXRad_array, skewYRad_array
+    else:
+        skewX, skewY = -skewXRad_array, -skewYRad_array
 
     eff_h = (heightmap_batch)
 
@@ -185,6 +202,7 @@ def ms_as_engine(field, h_map, dz_val, k0, n_mat, n_bkgd, FX, FY, XX, YY, px_siz
     device = field.device
     B, C, H, W = field.shape
     wavelength = 2 * torch.pi / k0
+    curved_first = is_curved_first(heightmapDirection)
     
     x_rad = angle_params.get('x_rad', 0.0) if angle_params else 0.0
     y_rad = angle_params.get('y_rad', 0.0) if angle_params else 0.0
@@ -212,18 +230,18 @@ def ms_as_engine(field, h_map, dz_val, k0, n_mat, n_bkgd, FX, FY, XX, YY, px_siz
             
         opd = global_phase_correction(x_rad, y_rad, n_mat, n_bkgd, h_lpc)
         
-        if heightmapDirection.lower() in ['front']:
+        if curved_first:
+            if abs(dz_eff - dz_val) < 1e-12:
+                for _ in range(num_sub): curr_field = propagate_with_cached_kernel(curr_field, H_sub)
+            else:
+                curr_field = propagate(curr_field, wavelength, dz_eff, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
+            curr_field = curr_field * torch.exp(1j * k0 * opd)
+        else:
             curr_field = curr_field * torch.exp(1j * k0 * opd)
             if abs(dz_eff - dz_val) < 1e-12:
                 for _ in range(num_sub): curr_field = propagate_with_cached_kernel(curr_field, H_sub)
             else:
                 curr_field = propagate(curr_field, wavelength, dz_eff, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
-        else:
-            if abs(dz_eff - dz_val) < 1e-12:
-                for _ in range(num_sub): curr_field = propagate_with_cached_kernel(curr_field, H_sub)
-            else:
-                curr_field = propagate(curr_field, wavelength, dz_eff, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
-            curr_field = curr_field * torch.exp(1j * k0 * opd)               
    
     return curr_field
 
@@ -251,12 +269,12 @@ def ss_as_engine(field, h_map, k0, n_mat, n_bkgd, FX, FY, XX, YY, px_size, heigh
     opd = global_phase_correction(x_rad, y_rad, n_mat, n_bkgd, h_lpc)
     mask = torch.exp(1j * k0 * opd)
 
-    if heightmapDirection.lower() in ['front']:
-        curr_field = curr_field * mask
+    if is_curved_first(heightmapDirection):
         curr_field = propagate(curr_field, wavelength, thickness, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
+        curr_field = curr_field * mask
     else:
-        curr_field = propagate(curr_field, wavelength, thickness, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
         curr_field = curr_field * mask
+        curr_field = propagate(curr_field, wavelength, thickness, n_mat, FX, FY, px_size, x_rad=x_rad, y_rad=y_rad)
         
     return curr_field
 

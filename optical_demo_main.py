@@ -183,7 +183,8 @@ for col_idx, (name, _) in enumerate(methods):
         
         m_score = metrics[key]
         if col_idx == 0:
-            ax.set_ylabel(f"Dir: {d}", fontsize=14, fontweight='bold')
+            orientation = "curved first" if d == "front" else "flat first"
+            ax.set_ylabel(f"{d} ({orientation})", fontsize=14, fontweight='bold')
         
         if row_idx == 0:
             ax.set_title(f"{name}", fontsize=12, fontweight='bold')
